@@ -1,0 +1,30 @@
+# --- System files ---
+.DS_Store
+Thumbs.db
+
+# --- Log files ---
+*.log
+
+# --- Temporary files ---
+*.tmp
+*.swp
+
+# --- Build / output directories ---
+/dist/
+/build/
+/out/
+
+# --- Environment files ---
+.env
+.env.local
+
+# --- Python cache ---
+__pycache__/
+*.pyc
+
+# --- Node modules ---
+node_modules/
+
+# --- IDE and editor files ---
+.vscode/
+.idea/
