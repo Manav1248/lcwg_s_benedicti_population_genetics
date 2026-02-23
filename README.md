@@ -1,6 +1,6 @@
 # S. *benedicti* lcWGS Pop Gen Pipeline
 
-Preprocessing pipeline for low-coverage whole genome sequencing data from *Streblospio benedicti*. Takes raw paired-end Illumina reads through QC, trimming, and alignment to produce analysis-ready BAM files for GATK/ANGSD.
+Pipeline for low-coverage whole genome sequencing data from *Streblospio benedicti*. Takes raw paired-end Illumina reads through QC, trimming, and alignment to produce analysis-ready BAM files for GATK/ANGSD.
 
 ## Pipeline Steps
 
