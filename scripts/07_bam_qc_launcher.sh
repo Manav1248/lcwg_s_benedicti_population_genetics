@@ -4,7 +4,6 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || true
 [[ -z "$SCRIPT_DIR" || ! -f "${SCRIPT_DIR}/07_bam_qc.config" ]] && SCRIPT_DIR="${PIPELINE_DIR}"
 source "${SCRIPT_DIR}/07_bam_qc.config"
-
 [[ ! -f "${XFILE}" ]] && echo "ERROR: ${XFILE} not found" && exit 1
 
 NUM_SAMPLES=$(lc "${XFILE}")
