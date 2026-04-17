@@ -1,61 +1,96 @@
 # S. *benedicti* lcWGS Pop Gen Pipeline
 
-Pipeline for low-coverage whole genome sequencing data from *Streblospio benedicti*. Takes raw paired-end Illumina reads through QC, trimming, alignment, and variant calling to produce a filtered VCF for downstream population genomics.
+Low-coverage whole-genome sequencing pipeline for *Streblospio benedicti*.
+Takes raw paired-end Illumina reads through QC, trimming, alignment, and
+joint variant calling, producing a hard-filtered SNP + indel VCF for
+downstream population genomics.
 
-## Pipeline Steps
+136 samples, 11 populations, 701 Mb reference, ~3.6X median coverage.
 
-| Step | Script | What it does |
-|------|--------|--------------|
-| 00 | `00_index_reference.sh` | Index reference genome (run once) |
-| 03 | `03_fastqc_before` | FastQC + MultiQC on raw reads |
-| 04 | `04_trimmomatic` | Adapter/quality trimming + post-trim FastQC |
-| 05 | `05_bwamem2` | BWA-MEM2 alignment, duplicates flagged (for ANGSD) |
-| 05b | `05b_bwamem2_gatk` | BWA-MEM2 alignment, duplicates removed (for GATK) |
-| 07 | `07_bam_qc` | Qualimap + mosdepth on GATK BAMs |
-| 08 | `08_haplotypecaller` | Per-sample GVCF calling (GATK HaplotypeCaller, ERC GVCF mode) |
-| 09b | `09b_genomicsdb_import` | GenomicsDBImport per chromosome (parallelized, replaces `09_combine_gvcfs`) |
-| 10b | `10b_genotype_by_interval` | GenotypeGVCFs per chromosome with `--include-non-variant-sites` (parallelized, replaces `10_genotype_gvcfs`) |
-| 11b | `11b_gather_filter.sh` | Gather per-interval VCFs + hard filter SNPs/indels (replaces `11_select_filter_variants`) |
+## What it does
 
-### Parallelized variant calling (steps 09b–11b)
+Data flow is strictly linear:
 
-The original single-shot scripts (`09_combine_gvcfs`, `10_genotype_gvcfs`, `11_select_filter_variants`) are retained but too slow for 136 samples across a 701 Mb genome. Steps 09b–11b replace them with a per-chromosome strategy:
-
-- **09b** splits the genome into 12 interval groups (11 chromosomes + 1 scaffolds bundle) and imports all sample GVCFs into a GenomicsDB workspace per interval. Runs as a 12-element array job.
-- **10b** runs GenotypeGVCFs against each GenomicsDB workspace. Runs as a 12-element array job.
-- **11b** gathers the 12 per-interval VCFs in dictionary order, then runs the same SelectVariants + VariantFiltration hard filtering as the original step 11.
-
-A setup script (`09b_setup_intervals.sh`) creates the interval lists and sample map before submitting.
-
-## Pipeline File Structure
-
-Each step follows the same pattern:
 ```
-global_config.sh          # Shared paths, containers, helper functions
-├── XX_step.config        # Job resources + step-specific paths
-├── XX_step_launcher.sh   # Submits the LSF array job
-└── XX_step.sh            # Worker script (runs once per sample)
+raw fastq
+  -> 03 FastQC before trim
+  -> 04 Trimmomatic (+ FastQC after)
+  -> 05 / 05b BWA-MEM2 alignment
+         05  = duplicates flagged   (BAMs for ANGSD)
+         05b = duplicates removed   (BAMs for GATK)
+  -> 07 BAM QC (Qualimap + mosdepth + MultiQC)
+  -> 08 HaplotypeCaller per sample  (-> per-sample GVCFs)
+  -> 09b GenomicsDBImport per chromosome
+  -> 10b 10 Mb chunking + GenotypeGVCFs per chunk
+         (--include-non-variant-sites for pixy-style diversity)
+  -> 11b bcftools concat + hard filter + PASS extraction
+         -> snps.pass.vcf.gz, indels.pass.vcf.gz
 ```
 
-Standalone jobs (07_bam_qc_multiqc, 11b_gather_filter) use `#BSUB` directives directly and are submitted with `bsub <`.
+The split at step 05 produces two BAM sets from the same alignments: one
+with duplicates flagged (for ANGSD genotype-likelihood workflows) and one
+with duplicates removed (for GATK joint calling). Only the GATK path is
+run end-to-end here; ANGSD/PCAngsd/FST scripts live in
+[scripts/deprecated/](scripts/deprecated/).
+
+## Step reference
+
+| Step | Script                          | What it does                                   |
+|------|---------------------------------|------------------------------------------------|
+| 00   | `00_index_reference.sh`         | faidx + bwa-mem2 index (once)                  |
+| 03   | `03_fastqc_before_launcher.sh`  | FastQC + MultiQC on raw reads                  |
+| 04   | `04_trimmomatic_launcher.sh`    | Adapter/quality trim + post-trim FastQC        |
+| 05   | `05_bwamem2_launcher.sh`        | Align, dups flagged (ANGSD BAMs)               |
+| 05b  | `05b_bwamem2_gatk_launcher.sh`  | Align, dups removed (GATK BAMs)                |
+| 07   | `07_bam_qc_launcher.sh`         | Qualimap + mosdepth per sample                 |
+| 07   | `07_bam_qc_multiqc.sh`          | MultiQC aggregation (one shot)                 |
+| 08   | `08_haplotypecaller_launcher.sh`| Per-sample GVCF calling                        |
+| 09b  | `09b_setup_intervals.sh`        | Build interval lists + sample map              |
+| 09b  | `09b_genomicsdb_import_launcher.sh` | GenomicsDBImport per chromosome (11 jobs)  |
+| 10b  | `10b_setup_chunks.sh`           | Split genome into 10 Mb chunks                 |
+| 10b  | `10b_genomicsdb_chunk_launcher.sh` | GenomicsDBImport per chunk                  |
+| 10b  | `10b_genotype_chunk_launcher.sh`| GenotypeGVCFs per chunk (all sites)            |
+| 11b  | `11b_gather_filter.sh`          | bcftools concat + hard filter + PASS SNPs/indels |
+
+## Layout
+
+```
+scripts/
+  global_config.sh              paths, containers, helpers
+  XX_step.config                per-step resources + paths
+  XX_step.sh                    worker (one invocation per array task)
+  XX_step_launcher.sh           runs on login node, submits the array
+  generate_sample_list.sh       builds full_sample_list.txt from reads/
+  deprecated/                   ANGSD/PCAngsd/diversity/FST (not run here)
+  recovery/                     one-off fixups for specific samples
+```
+
+Standalone jobs (`00_index_reference.sh`, `07_bam_qc_multiqc.sh`,
+`11b_gather_filter.sh`) carry `#BSUB` directives inline and are submitted
+with `bsub < script.sh`. Array jobs use a launcher + worker pair: run the
+launcher with `bash`, and it submits the worker as an LSF array.
 
 ## Setup
 
-1. Edit paths in `global_config.sh` (project dir, containers, reference, etc.)
+1. Edit the paths block at the top of `global_config.sh`
+   (`WORKING_DIR`, `READS_BASE`, `XFILE`, `PIPELINE_DIR`).
 2. Generate the sample list:
-   ```bash
+   ```
    bash generate_sample_list.sh /path/to/reads
    ```
-3. Index the reference (one time):
-   ```bash
-   mkdir -p logs && bsub < 00_index_reference.sh
+3. Index the reference (once):
+   ```
+   mkdir -p logs
+   bsub < 00_index_reference.sh
    ```
 
 ## Running
 
-From the `scripts/` directory:
-```bash
-# preprocessing
+From `scripts/`, run each step and wait for it to finish before starting
+the next:
+
+```
+# preprocessing + alignment
 bash 03_fastqc_before_launcher.sh
 bash 04_trimmomatic_launcher.sh
 bash 05_bwamem2_launcher.sh
@@ -65,46 +100,54 @@ bash 05b_bwamem2_gatk_launcher.sh
 bash 07_bam_qc_launcher.sh
 bsub < 07_bam_qc_multiqc.sh
 
-# variant calling
+# per-sample GVCFs
 bash 08_haplotypecaller_launcher.sh
 
-# parallelized joint genotyping
+# joint genotyping (chunked)
 bash 09b_setup_intervals.sh
 bash 09b_genomicsdb_import_launcher.sh
-bash 10b_genotype_by_interval_launcher.sh
+bash 10b_setup_chunks.sh
+bash 10b_genomicsdb_chunk_launcher.sh
+bash 10b_genotype_chunk_launcher.sh
+
+# filter
 bsub < 11b_gather_filter.sh
 ```
 
-Each launcher submits an LSF array job, one task per sample (or per interval for 09b/10b). Wait for each step to finish before starting the next.
+## Sample list format
 
-## Sample List
+`full_sample_list.txt` is the array-index key for every step. One line per
+sample, `Population/SampleName`:
 
-`full_sample_list.txt` drives all array jobs. One line per sample in `Population/SampleName` format:
 ```
 Bar_L/Bar_L_F01
 Bar_L/Bar_L_F02
 FL/FL_P_F01
 ```
 
+Reads must live at `${READS_BASE}/${Population}/${SampleName}_R{1,2}.fastq`.
+
 ## Outputs
 
-- **03_FASTQC_BEFORE/** — Raw read quality reports
-- **04_TRIMMOMATIC/** — Trimmed reads (paired + unpaired)
-- **05_BWA_MEM2/** — Aligned BAMs with duplicates flagged (`.sorted.markdup.bam`)
-- **05_BWA_MEM2/gatk_downstream/** — Aligned BAMs with duplicates removed (`.sorted.dedup.bam`)
-- **06_FASTQC_AFTER/** — Post-trim quality reports
-- **07_BAM_QC/** — Qualimap and mosdepth reports per sample
-- **08_HAPLOTYPECALLER/gvcfs/** — Per-sample GVCFs
-- **08_HAPLOTYPECALLER/genomicsdb/** — GenomicsDB workspaces per interval
-- **09_GENOTYPED/** — Joint-genotyped all-sites VCF
-- **09_GENOTYPED/filtered/** — Hard-filtered SNP and indel VCFs (`snps.pass.vcf.gz`, `indels.pass.vcf.gz`)
+| Directory                                       | Contents                                              |
+|-------------------------------------------------|-------------------------------------------------------|
+| `03_FASTQC_BEFORE/`                             | Raw-read FastQC + MultiQC                             |
+| `04_TRIMMOMATIC/trimmed_reads/`                 | Paired trimmed fastq.gz                               |
+| `06_FASTQC_AFTER/`                              | Post-trim FastQC + MultiQC                            |
+| `05_BWA_MEM2/`                                  | ANGSD BAMs (`.sorted.markdup.bam`)                    |
+| `05_BWA_MEM2/gatk_downstream/`                  | GATK BAMs (`.sorted.dedup.bam`)                       |
+| `07_BAM_QC/`                                    | Qualimap + mosdepth + MultiQC per BAM set             |
+| `08_HAPLOTYPECALLER/gvcfs/`                     | Per-sample GVCFs                                      |
+| `08_HAPLOTYPECALLER/genomicsdb/`                | Per-chromosome GenomicsDB workspaces                  |
+| `08_HAPLOTYPECALLER/genomicsdb_chunks/`         | Per-chunk GenomicsDB workspaces                       |
+| `09_GENOTYPED/by_chunk/`                        | Per-chunk all-sites VCFs                              |
+| `09_GENOTYPED/all_samples.allsites.vcf.gz`      | Merged all-sites VCF                                  |
+| `09_GENOTYPED/filtered/snps.pass.vcf.gz`        | Hard-filtered PASS SNPs (**deliverable**)             |
+| `09_GENOTYPED/filtered/indels.pass.vcf.gz`      | Hard-filtered PASS indels                             |
 
 ## Requirements
 
-- LSF job scheduler
-- Apptainer/Singularity
-- Containers: FastQC, Trimmomatic, MultiQC, BWA-MEM2, samtools, Qualimap, mosdepth, GATK
-
-## Data
-
-136 samples across 11 populations from 3 US coasts (Atlantic, Gulf, West). ~3.6X median coverage per individual (target was 8–10X).
+- LSF (`bsub` / `$LSB_JOBINDEX`)
+- Apptainer / Singularity
+- Containers for FastQC, Trimmomatic, MultiQC, BWA-MEM2, samtools,
+  Qualimap, mosdepth, GATK, bcftools
