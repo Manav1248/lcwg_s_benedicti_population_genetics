@@ -1,7 +1,9 @@
 #!/bin/bash
 # 09b_genomicsdb_import_launcher.sh - submit GenomicsDBImport array (11 chromosomes)
 
-source /share/ivirus/dhermos/zakas_project/scripts/global_config.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || true
+[[ -z "$SCRIPT_DIR" || ! -f "${SCRIPT_DIR}/09b_genomicsdb_import.config" ]] && SCRIPT_DIR="${PIPELINE_DIR}"
+source "${SCRIPT_DIR}/09b_genomicsdb_import.config"
 
 INT_DIR=${HC_DIR}/intervals
 GROUPS_FILE=${INT_DIR}/interval_groups.txt
@@ -19,9 +21,9 @@ FIRST_GVCF=$(head -1 "$SAMPLE_MAP" | cut -f2)
 echo "Submitting GenomicsDBImport for ${NUM_GROUPS} chromosomes"
 echo "Sample map: $(wc -l < "$SAMPLE_MAP") samples"
 
-bsub -J "genomicsdb_import[1-${NUM_GROUPS}]" \
-     -n 5 -W 24:00 \
-     -R "span[hosts=1] rusage[mem=32GB]" \
+bsub -J "${JOB09B_NAME}[1-${NUM_GROUPS}]" \
+     -n $JOB09B_CPUS -W $JOB09B_TIME \
+     -R "span[hosts=1] rusage[mem=${JOB09B_MEMORY}]" \
      -o "${PIPELINE_DIR}/logs/genomicsdb_import.%J_%I.log" \
      -e "${PIPELINE_DIR}/logs/genomicsdb_import.%J_%I.err" \
      bash "${PIPELINE_DIR}/09b_genomicsdb_import.sh"

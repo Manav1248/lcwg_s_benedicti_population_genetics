@@ -20,7 +20,7 @@ while IFS= read -r entry; do
 done < "$XFILE"
 
 create_dir $TRIM_DIR $TRIM_LOGS_O $TRIM_LOGS_E \
-           $WORKING_DIR/06_FASTQC_AFTER/htmls
+           $FASTQC_AFTER_DIR/htmls
 
 echo "Submitting ${JOB4_NAME} for ${NUM_SAMPLES} samples across all populations..."
 echo "  Sample list: ${XFILE}"
@@ -37,6 +37,6 @@ bsub -J "${JOB4_NAME}[1-${NUM_SAMPLES}]%${NUM_SAMPLES}" \
      -R "span[hosts=1] rusage[mem=${JOB4_MEMORY}]" \
      -o "${TRIM_LOGS_O}/trim.04.%J_%I.log" \
      -e "${TRIM_LOGS_E}/trim.04.%J_%I.err" \
-     < ${SCRIPT_DIR}/04_trimmomatic.sh
+     bash "${SCRIPT_DIR}/04_trimmomatic.sh"
 
 echo "Job submitted. Monitor with: bjobs -J ${JOB4_NAME}"

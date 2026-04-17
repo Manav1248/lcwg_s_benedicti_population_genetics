@@ -4,7 +4,9 @@
 # note: unplaced scaffolds are excluded; to include them, add a scaffolds.list
 # entry to interval_groups.txt and generate the list from the .fai
 
-source /share/ivirus/dhermos/zakas_project/scripts/global_config.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || true
+[[ -z "$SCRIPT_DIR" || ! -f "${SCRIPT_DIR}/global_config.sh" ]] && SCRIPT_DIR="${PIPELINE_DIR}"
+source "${SCRIPT_DIR}/global_config.sh"
 
 INT_DIR=${HC_DIR}/intervals
 mkdir -p "$INT_DIR"

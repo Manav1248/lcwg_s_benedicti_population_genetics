@@ -1,126 +1,124 @@
 #!/bin/bash
 #BSUB -J gather_filter
-#BSUB -n 2
+#BSUB -n 8
 #BSUB -W 12:00
-#BSUB -R "span[hosts=1] rusage[mem=16GB]"
+#BSUB -R "span[hosts=1] rusage[mem=24GB]"
 #BSUB -o logs/gather_filter_%J.log
 #BSUB -e logs/gather_filter_%J.err
-# 11b_gather_filter.sh - merge per-chromosome VCFs, split SNPs/indels, hard filter
+# 11b_gather_filter.sh - fix chunk VCFs in parallel, merge, filter with bcftools
+
+set -euo pipefail
 
 pwd; hostname; date
 
-source /share/ivirus/dhermos/zakas_project/scripts/global_config.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || true
+[[ -z "$SCRIPT_DIR" || ! -f "${SCRIPT_DIR}/global_config.sh" ]] && SCRIPT_DIR="${PIPELINE_DIR}"
+source "${SCRIPT_DIR}/global_config.sh"
 
-INTERVAL_VCFS=${GENOTYPED_DIR}/by_interval
+BCFTOOLS_SIF=${CONT}/staphb_bcftools:1.17.sif
+CHUNK_DIR=${GENOTYPED_DIR}/by_chunk
+FIXED_DIR=${GENOTYPED_DIR}/by_chunk_fixed
 ALLSITES_VCF=${GENOTYPED_DIR}/all_samples.allsites.vcf.gz
 OUTDIR=${GENOTYPED_DIR}/filtered
-mkdir -p "$OUTDIR"
+mkdir -p "$OUTDIR" "$FIXED_DIR"
 
 module load apptainer
 
-GATK_CMD="apptainer exec --bind ${WORKING_DIR}:${WORKING_DIR},${REF_DIR}:${REF_DIR} $GATK_SIF gatk"
-JAVA_OPTS="--java-options -Xmx14G"
+BCF="apptainer exec --bind ${WORKING_DIR}:${WORKING_DIR},${REF_DIR}:${REF_DIR} $BCFTOOLS_SIF"
 
-# gather in .dict order (lexicographic: Ch_1 Ch_10 Ch_11 Ch_2 ... Ch_9)
-INPUT_ARGS=""
-MISSING=0
-for GROUP in Ch_1 Ch_10 Ch_11 Ch_2 Ch_3 Ch_4 Ch_5 Ch_6 Ch_7 Ch_8 Ch_9; do
-    VCF="${INTERVAL_VCFS}/${GROUP}.allsites.vcf.gz"
-    if [[ ! -f "$VCF" ]]; then
-        echo "Error: missing interval VCF: $VCF"
-        MISSING=$((MISSING + 1))
-    fi
-    INPUT_ARGS="${INPUT_ARGS} -I ${VCF}"
+NCHUNKS=$(ls ${CHUNK_DIR}/chunk_*.vcf.gz 2>/dev/null | wc -l)
+[[ $NCHUNKS -eq 0 ]] && echo "Error: no chunk VCFs found" && exit 1
+
+# rewrite chunks in parallel (4 at a time) to fix BGZF blocks
+echo "Fixing ${NCHUNKS} chunk VCFs (4 parallel)..."
+MAX_PARALLEL=4
+for f in $(ls ${CHUNK_DIR}/chunk_*.vcf.gz | sort); do
+    BASE=$(basename "$f")
+    (
+        $BCF bcftools view $f --threads 2 -O z -o ${FIXED_DIR}/${BASE} 2>/dev/null
+        $BCF bcftools index ${FIXED_DIR}/${BASE}
+        echo "  Fixed ${BASE}"
+    ) &
+    RUNNING=$(jobs -rp | wc -l)
+    while [[ $RUNNING -ge $MAX_PARALLEL ]]; do
+        sleep 2
+        RUNNING=$(jobs -rp | wc -l)
+    done
 done
-[[ $MISSING -gt 0 ]] && echo "Error: ${MISSING} interval VCFs missing" && exit 1
+wait
+echo "All chunks fixed"
 
-echo "Gathering 11 per-chromosome VCFs..."
-$GATK_CMD $JAVA_OPTS GatherVcfs \
-    $INPUT_ARGS \
-    -O $ALLSITES_VCF
+# verify all fixed chunks exist
+FIXED_COUNT=$(ls ${FIXED_DIR}/chunk_*.vcf.gz 2>/dev/null | wc -l)
+[[ $FIXED_COUNT -ne $NCHUNKS ]] && echo "Error: only ${FIXED_COUNT}/${NCHUNKS} chunks fixed" && exit 1
 
-[[ $? -ne 0 ]] && echo "Error: GatherVcfs failed" && exit 1
+# naive concat (fast block copy, no decompression)
+echo "Concatenating with naive block copy..."
+ls ${FIXED_DIR}/chunk_*.vcf.gz | sort > ${FIXED_DIR}/chunk_list.txt
+$BCF bcftools concat \
+    --naive \
+    --file-list ${FIXED_DIR}/chunk_list.txt \
+    -O z \
+    -o $ALLSITES_VCF
 
-echo "Indexing merged VCF..."
-$GATK_CMD IndexFeatureFile -I $ALLSITES_VCF
-
+$BCF bcftools index $ALLSITES_VCF
 echo "All-sites VCF: $(du -h "$ALLSITES_VCF" | cut -f1)"
 
-# select SNPs
+# SNPs: select -> filter -> extract PASS
 echo "Selecting SNPs..."
-$GATK_CMD $JAVA_OPTS SelectVariants \
-    -R $REFERENCE \
-    -V $ALLSITES_VCF \
-    --select-type-to-include SNP \
-    -O ${OUTDIR}/snps.raw.vcf.gz
+$BCF bcftools view -v snps $ALLSITES_VCF --threads 4 \
+    -O z -o ${OUTDIR}/snps.raw.vcf.gz
+$BCF bcftools index ${OUTDIR}/snps.raw.vcf.gz
 
-# select indels
-echo "Selecting indels..."
-$GATK_CMD $JAVA_OPTS SelectVariants \
-    -R $REFERENCE \
-    -V $ALLSITES_VCF \
-    --select-type-to-include INDEL \
-    -O ${OUTDIR}/indels.raw.vcf.gz
-
-# extract quality scores for diagnostic plots (before filtering)
-echo "Extracting SNP quality scores..."
-$GATK_CMD $JAVA_OPTS VariantsToTable \
-    -R $REFERENCE \
-    -V ${OUTDIR}/snps.raw.vcf.gz \
-    -F CHROM -F POS -F QUAL -F QD -F DP -F MQ -F MQRankSum -F FS -F ReadPosRankSum -F SOR \
-    --show-filtered \
-    -O ${OUTDIR}/snps.raw.table
-
-echo "Extracting indel quality scores..."
-$GATK_CMD $JAVA_OPTS VariantsToTable \
-    -R $REFERENCE \
-    -V ${OUTDIR}/indels.raw.vcf.gz \
-    -F CHROM -F POS -F QUAL -F QD -F DP -F MQ -F MQRankSum -F FS -F ReadPosRankSum -F SOR \
-    --show-filtered \
-    -O ${OUTDIR}/indels.raw.table
-
-# hard filter SNPs
 echo "Filtering SNPs..."
-$GATK_CMD $JAVA_OPTS VariantFiltration \
-    -R $REFERENCE \
-    -V ${OUTDIR}/snps.raw.vcf.gz \
-    -filter "QD < 2.0" --filter-name "QD2" \
-    -filter "FS > 60.0" --filter-name "FS60" \
-    -filter "MQ < 40.0" --filter-name "MQ40" \
-    -filter "MQRankSum < -12.5" --filter-name "MQRankSum-12.5" \
-    -filter "ReadPosRankSum < -8.0" --filter-name "ReadPosRankSum-8" \
-    -filter "SOR > 3.0" --filter-name "SOR3" \
-    -O ${OUTDIR}/snps.filtered.vcf.gz
+$BCF bcftools filter ${OUTDIR}/snps.raw.vcf.gz \
+    -e 'QD<2.0 || FS>60.0 || MQ<40.0 || MQRankSum<-12.5 || ReadPosRankSum<-8.0 || SOR>3.0' \
+    -s "hardfilter" \
+    -O z -o ${OUTDIR}/snps.filtered.vcf.gz
+$BCF bcftools index ${OUTDIR}/snps.filtered.vcf.gz
 
-# hard filter indels
+echo "Extracting PASS SNPs..."
+$BCF bcftools view -f PASS ${OUTDIR}/snps.filtered.vcf.gz \
+    -O z -o ${OUTDIR}/snps.pass.vcf.gz
+$BCF bcftools index ${OUTDIR}/snps.pass.vcf.gz
+
+# indels: select -> filter -> extract PASS
+echo "Selecting indels..."
+$BCF bcftools view -v indels $ALLSITES_VCF --threads 4 \
+    -O z -o ${OUTDIR}/indels.raw.vcf.gz
+$BCF bcftools index ${OUTDIR}/indels.raw.vcf.gz
+
 echo "Filtering indels..."
-$GATK_CMD $JAVA_OPTS VariantFiltration \
-    -R $REFERENCE \
-    -V ${OUTDIR}/indels.raw.vcf.gz \
-    -filter "QD < 2.0" --filter-name "QD2" \
-    -filter "FS > 200.0" --filter-name "FS200" \
-    -filter "ReadPosRankSum < -20.0" --filter-name "ReadPosRankSum-20" \
-    -filter "SOR > 10.0" --filter-name "SOR10" \
-    -O ${OUTDIR}/indels.filtered.vcf.gz
+$BCF bcftools filter ${OUTDIR}/indels.raw.vcf.gz \
+    -e 'QD<2.0 || FS>200.0 || ReadPosRankSum<-20.0 || SOR>10.0' \
+    -s "hardfilter" \
+    -O z -o ${OUTDIR}/indels.filtered.vcf.gz
+$BCF bcftools index ${OUTDIR}/indels.filtered.vcf.gz
 
-# extract PASS-only
-echo "Extracting PASS variants..."
-$GATK_CMD $JAVA_OPTS SelectVariants \
-    -R $REFERENCE \
-    -V ${OUTDIR}/snps.filtered.vcf.gz \
-    --exclude-filtered \
-    -O ${OUTDIR}/snps.pass.vcf.gz
-
-$GATK_CMD $JAVA_OPTS SelectVariants \
-    -R $REFERENCE \
-    -V ${OUTDIR}/indels.filtered.vcf.gz \
-    --exclude-filtered \
-    -O ${OUTDIR}/indels.pass.vcf.gz
+echo "Extracting PASS indels..."
+$BCF bcftools view -f PASS ${OUTDIR}/indels.filtered.vcf.gz \
+    -O z -o ${OUTDIR}/indels.pass.vcf.gz
+$BCF bcftools index ${OUTDIR}/indels.pass.vcf.gz
 
 # counts
-for f in snps.raw snps.pass indels.raw indels.pass; do
-    N=$(apptainer exec --bind ${OUTDIR}:${OUTDIR} $GATK_SIF bash -c "zgrep -vc '^#' ${OUTDIR}/${f}.vcf.gz" 2>/dev/null)
+echo ""
+echo "Site counts:"
+for f in snps.filtered snps.pass indels.filtered indels.pass; do
+    N=$($BCF bcftools view -H ${OUTDIR}/${f}.vcf.gz | wc -l)
     echo "${f}: ${N}"
 done
+
+# quality score tables for diagnostic plots
+echo "Extracting quality scores..."
+echo -e "CHROM\tPOS\tQUAL\tQD\tDP\tMQ\tMQRankSum\tFS\tReadPosRankSum\tSOR" > ${OUTDIR}/snps.raw.table
+$BCF bcftools query -f '%CHROM\t%POS\t%QUAL\t%INFO/QD\t%INFO/DP\t%INFO/MQ\t%INFO/MQRankSum\t%INFO/FS\t%INFO/ReadPosRankSum\t%INFO/SOR\n' \
+    ${OUTDIR}/snps.filtered.vcf.gz >> ${OUTDIR}/snps.raw.table
+
+echo -e "CHROM\tPOS\tQUAL\tQD\tDP\tMQ\tMQRankSum\tFS\tReadPosRankSum\tSOR" > ${OUTDIR}/indels.raw.table
+$BCF bcftools query -f '%CHROM\t%POS\t%QUAL\t%INFO/QD\t%INFO/DP\t%INFO/MQ\t%INFO/MQRankSum\t%INFO/FS\t%INFO/ReadPosRankSum\t%INFO/SOR\n' \
+    ${OUTDIR}/indels.filtered.vcf.gz >> ${OUTDIR}/indels.raw.table
+
+# clean up
+rm -rf "$FIXED_DIR"
 
 echo "Done"; date

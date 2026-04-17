@@ -23,10 +23,10 @@ while IFS= read -r entry; do
                "${QC_GATK_MOSDEPTH}/${POPDIR}"
 done < "$XFILE"
 
-echo "Submitting ${JOB_NAME} for ${NUM_SAMPLES} samples..."
-bsub -J "${JOB_NAME}[1-${NUM_SAMPLES}]%${NUM_SAMPLES}" \
-     -n $JOB_CPUS -W $JOB_TIME \
-     -R "span[hosts=1] rusage[mem=${JOB_MEMORY}]" \
+echo "Submitting ${JOB7_NAME} for ${NUM_SAMPLES} samples..."
+bsub -J "${JOB7_NAME}[1-${NUM_SAMPLES}]%${NUM_SAMPLES}" \
+     -n $JOB7_CPUS -W $JOB7_TIME \
+     -R "span[hosts=1] rusage[mem=${JOB7_MEMORY}]" \
      -o "${BAM_QC_LOGS_O}/bam_qc.07.%J_%I.log" \
      -e "${BAM_QC_LOGS_E}/bam_qc.07.%J_%I.err" \
      bash "${SCRIPT_DIR}/07_bam_qc.sh"

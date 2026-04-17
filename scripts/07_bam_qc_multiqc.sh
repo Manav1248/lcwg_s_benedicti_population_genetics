@@ -3,14 +3,16 @@
 #BSUB -n 1
 #BSUB -W 01:00
 #BSUB -R "rusage[mem=4GB]"
-#BSUB -o /share/ivirus/dhermos/zakas_project/07_BAM_QC/out/multiqc.07.%J.log
-#BSUB -e /share/ivirus/dhermos/zakas_project/07_BAM_QC/err/multiqc.07.%J.err
+#BSUB -o logs/multiqc.07.%J.log
+#BSUB -e logs/multiqc.07.%J.err
 
 # 07_bam_qc_multiqc.sh - Aggregate Qualimap + mosdepth outputs into one report
 
 pwd; hostname; date
 
-source /share/ivirus/dhermos/zakas_project/scripts/07_bam_qc.config
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || true
+[[ -z "$SCRIPT_DIR" || ! -f "${SCRIPT_DIR}/07_bam_qc.config" ]] && SCRIPT_DIR="${PIPELINE_DIR}"
+source "${SCRIPT_DIR}/07_bam_qc.config"
 
 module load apptainer
 
@@ -36,4 +38,4 @@ apptainer exec \
         -n multiqc_bam_qc_gatk \
         --force
 
-echo "MultiQC (BAM QC) completed — two reports generated"; date
+echo "MultiQC (BAM QC) completed - two reports generated"; date

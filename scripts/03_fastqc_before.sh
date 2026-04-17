@@ -33,11 +33,7 @@ apptainer exec \
 
 # Move HTML reports to shared htmls directory
 cd ${OUTDIR}
-if ls *.html 1> /dev/null 2>&1; then
-    mv *.html ${FASTQC_B_HTML}/
-else
-    :
-fi
+mv *.html ${FASTQC_B_HTML}/ 2>/dev/null
 
 date
 
@@ -49,7 +45,5 @@ if [[ $COMPLETED_ZIPS -ge $EXPECTED_ZIPS ]]; then
         --bind ${FASTQC_BEFORE}:${FASTQC_BEFORE} \
         $MULTIQC_SIF \
         multiqc ${FASTQC_BEFORE} -o ${FASTQC_BEFORE} -n multiqc_before_trim --force
-else
-    :
 fi
 date

@@ -44,9 +44,9 @@ apptainer exec \
 
 date
 
-# Run FASTQC again on trimmed reads....
-FASTQC_OUT=${WORKING_DIR}/06_FASTQC_AFTER/${SUBDIR}/${NAME}
-FASTQC_A_HTML=${WORKING_DIR}/06_FASTQC_AFTER/htmls
+# Run FastQC again on trimmed reads
+FASTQC_OUT=${FASTQC_AFTER_DIR}/${SUBDIR}/${NAME}
+FASTQC_A_HTML=${FASTQC_AFTER_DIR}/htmls
 mkdir -p "$FASTQC_OUT" "$FASTQC_A_HTML"
 
 apptainer exec \
@@ -58,17 +58,14 @@ apptainer exec \
 
 date
 
-# MultiQC: runs once after all samples finish...
-FASTQC_AFTER_BASE=${WORKING_DIR}/06_FASTQC_AFTER
+# MultiQC: runs once after all samples finish
 EXPECTED_ZIPS=$(( $(wc -l < "$XFILE") * 2 ))
-COMPLETED_ZIPS=$(find ${FASTQC_AFTER_BASE} -name "*.zip" 2>/dev/null | wc -l)
+COMPLETED_ZIPS=$(find ${FASTQC_AFTER_DIR} -name "*.zip" 2>/dev/null | wc -l)
 if [[ $COMPLETED_ZIPS -ge $EXPECTED_ZIPS ]]; then
     echo "All samples complete ($COMPLETED_ZIPS/$EXPECTED_ZIPS zips). Running MultiQC..."
     apptainer exec \
-        --bind ${FASTQC_AFTER_BASE}:${FASTQC_AFTER_BASE} \
+        --bind ${FASTQC_AFTER_DIR}:${FASTQC_AFTER_DIR} \
         $MULTIQC_SIF \
-        multiqc ${FASTQC_AFTER_BASE} -o ${FASTQC_AFTER_BASE} -n multiqc_after_trim --force
-else
-    :
+        multiqc ${FASTQC_AFTER_DIR} -o ${FASTQC_AFTER_DIR} -n multiqc_after_trim --force
 fi
 date

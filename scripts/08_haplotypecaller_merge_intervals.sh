@@ -21,8 +21,8 @@ while read IDX; do
     echo "  [${IDX}] ${NAME}"
 
     bsub -J "merge_${NAME}" \
-         -n 2 -W 2:00 \
-         -R "span[hosts=1] rusage[mem=8GB]" \
+         -n 2 -W $JOB8_MERGE_TIME \
+         -R "span[hosts=1] rusage[mem=${JOB8_MERGE_MEMORY}]" \
          -o "${HC_LOGS_O}/hc.08.merge.%J_${IDX}.log" \
          -e "${HC_LOGS_E}/hc.08.merge.%J_${IDX}.err" \
          bash -c "export HC_SAMPLE_IDX=${IDX}; bash ${WORKER}"

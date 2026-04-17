@@ -23,6 +23,6 @@ bsub -J "${JOB3_NAME}[1-${NUM_SAMPLES}]%${NUM_SAMPLES}" \
      -R "span[hosts=1] rusage[mem=${JOB3_MEMORY}]" \
      -o "${FASTQC_LOGS_O}/fastqc.03.%J_%I.log" \
      -e "${FASTQC_LOGS_E}/fastqc.03.%J_%I.err" \
-     < ${SCRIPT_DIR}/03_fastqc_before.sh
+     bash "${SCRIPT_DIR}/03_fastqc_before.sh"
 
 echo "Job submitted."

@@ -29,8 +29,8 @@ mkdir -p "$ANGSD_QUALI_OUT" "$ANGSD_MOS_OUT" "$GATK_QUALI_OUT" "$GATK_MOS_OUT"
 
 module load apptainer
 
-# 1. Qualimap bamqc — ANGSD BAM (duplicates flagged)
-echo "[$(date)] Running Qualimap on ANGSD BAM..."
+# Qualimap bamqc on ANGSD BAM (duplicates flagged)
+echo "Running Qualimap on ANGSD BAM..."
 apptainer exec \
     --bind ${ANGSD_BAM_DIR}:${ANGSD_BAM_DIR},${ANGSD_QUALI_OUT}:${ANGSD_QUALI_OUT} \
     $QUALIMAP_SIF \
@@ -40,8 +40,8 @@ apptainer exec \
         -nt $QUALIMAP_THREADS \
         --java-mem-size=${QUALIMAP_JAVA_MEM}
 
-# 2. mosdepth — ANGSD BAM
-echo "[$(date)] Running mosdepth on ANGSD BAM..."
+# mosdepth on ANGSD BAM
+echo "Running mosdepth on ANGSD BAM..."
 apptainer exec \
     --bind ${ANGSD_BAM_DIR}:${ANGSD_BAM_DIR},${ANGSD_MOS_OUT}:${ANGSD_MOS_OUT} \
     $MOSDEPTH_SIF \
@@ -52,8 +52,8 @@ apptainer exec \
         ${ANGSD_MOS_OUT}/${NAME}.angsd \
         $ANGSD_BAM
 
-# 3. Qualimap bamqc — GATK BAM (duplicates removed)
-echo "[$(date)] Running Qualimap on GATK BAM..."
+# Qualimap bamqc on GATK BAM (duplicates removed)
+echo "Running Qualimap on GATK BAM..."
 apptainer exec \
     --bind ${GATK_BAM_DIR}:${GATK_BAM_DIR},${GATK_QUALI_OUT}:${GATK_QUALI_OUT} \
     $QUALIMAP_SIF \
@@ -63,8 +63,8 @@ apptainer exec \
         -nt $QUALIMAP_THREADS \
         --java-mem-size=${QUALIMAP_JAVA_MEM}
 
-# 4. mosdepth — GATK BAM
-echo "[$(date)] Running mosdepth on GATK BAM..."
+# mosdepth on GATK BAM
+echo "Running mosdepth on GATK BAM..."
 apptainer exec \
     --bind ${GATK_BAM_DIR}:${GATK_BAM_DIR},${GATK_MOS_OUT}:${GATK_MOS_OUT} \
     $MOSDEPTH_SIF \

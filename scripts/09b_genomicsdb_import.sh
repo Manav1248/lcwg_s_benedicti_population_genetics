@@ -4,7 +4,9 @@
 
 pwd; hostname; date
 
-source /share/ivirus/dhermos/zakas_project/scripts/global_config.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || true
+[[ -z "$SCRIPT_DIR" || ! -f "${SCRIPT_DIR}/09b_genomicsdb_import.config" ]] && SCRIPT_DIR="${PIPELINE_DIR}"
+source "${SCRIPT_DIR}/09b_genomicsdb_import.config"
 
 INT_DIR=${HC_DIR}/intervals
 SAMPLE_MAP=${INT_DIR}/sample_map.txt
@@ -34,7 +36,7 @@ module load apptainer
 apptainer exec \
     --bind ${WORKING_DIR}:${WORKING_DIR},${REF_DIR}:${REF_DIR},${TMPDIR}:${TMPDIR} \
     $GATK_SIF \
-    gatk --java-options "-Xmx28G -XX:ParallelGCThreads=2 -Djava.io.tmpdir=${TMPDIR}" \
+    gatk --java-options "${JOB09B_HEAP} -XX:ParallelGCThreads=2 -Djava.io.tmpdir=${TMPDIR}" \
         GenomicsDBImport \
         --sample-name-map $SAMPLE_MAP \
         --genomicsdb-workspace-path $WORKSPACE \
