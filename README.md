@@ -55,7 +55,7 @@ Steps 00 and 09–11 are standalone `#BSUB` scripts submitted directly.
 
 ## Notes
 
-- 136 samples across 11 populations (Atlantic, Gulf, West coast)
+- Final Count: 134 samples across 11 populations from 3 geographic locations (Atlantic, Gulf, West coast)
 - Median coverage ~3.6X after duplicate removal
 - `--include-non-variant-sites` in GenotypeGVCFs retains invariant sites for downstream diversity statistics
 - Hard filtering follows GATK best practices for non-model organisms (see below)
