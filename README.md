@@ -1,78 +1,219 @@
-# Streblospio benedicti lcWGS Pipeline
+# *Streblospio benedicti* Low-Coverage WGS Population Genetics Pipeline
 
-Preprocessing and variant calling pipeline for low-coverage whole genome sequencing data from *Streblospio benedicti* populations. Produces a hard-filtered GATK VCF callset from raw paired-end Illumina reads.
+GATK-based variant calling pipeline for low-coverage whole-genome sequencing data.  
+Designed for LSF (bsub) HPC environments using Apptainer containers.
 
-## Pipeline Order
+---
 
-| Step | Script(s) | What it does |
-|------|-----------|--------------|
-| 00 | `00_index_reference.sh` | Decompress reference, build bwa-mem2 and samtools faidx indices |
-| 03 | `03_fastqc_before` (config/launcher/worker) | Pre-trim FastQC + MultiQC |
-| 04 | `04_trimmomatic` (config/launcher/worker) | Adapter/quality trimming + post-trim FastQC + MultiQC |
-| 05b | `05b_bwamem2_gatk` (config/launcher/worker) | Align, fixmate, sort, markdup with duplicate removal → `.sorted.dedup.bam` |
-| 07 | `07_bam_qc` (config/launcher/worker) + `07_bam_qc_multiqc.sh` | Qualimap + mosdepth on ANGSD and GATK BAMs, then aggregate MultiQC |
-| 08 | `08_haplotypecaller` (config/launcher/worker) | Per-sample GVCF generation in ERC GVCF mode |
-| 08* | `08_haplotypecaller_by_interval.sh` / `_interval.sh` / `_merge.sh` / `_merge_intervals.sh` | Interval-split rerun for high-coverage samples that exceeded walltime |
-| 09 | `09_combine_gvcfs.sh` | Merge per-sample GVCFs into one multi-sample GVCF |
-| 10 | `10_genotype_gvcfs.sh` | Joint genotyping with `--include-non-variant-sites` |
-| 11 | `11_select_filter_variants.sh` | SNP/indel selection, hard filtering, PASS extraction, diagnostic tables |
+## Quick Start
 
-Steps 01–02 (sample list generation, renaming) and step 06 (post-trim FastQC) are handled inline or as one-off commands not included here.
+**1. Edit `global_config.sh`** — the only file you need to change to set up a new project:
 
-## Script Architecture
+```bash
+export WORKING_DIR=/path/to/your/project
+export READS_BASE=/path/to/raw/reads
+export XFILE=/path/to/your/sample_list.txt
+export PIPELINE_DIR=/path/to/these/scripts
+```
 
-Steps 03–08 follow a modular pattern:
+**2. Generate your sample list** (if needed):
 
-- **`global_config.sh`** — shared paths, containers, utility functions
-- **`{step}.config`** — step-specific variables (job resources, output dirs)
-- **`{step}_launcher.sh`** — validates inputs, creates directories, submits array job
-- **`{step}.sh`** — worker script executed per sample via LSF array index
+```bash
+bash generate_sample_list.sh <reads_dir> <output_file>
+```
 
-Steps 00 and 09–11 are standalone `#BSUB` scripts submitted directly.
+Each line in `XFILE` must be `POPULATION/SAMPLE_PREFIX` (e.g., `Bar_L/Bar_L_01`).
 
-## Key Inputs
+**3. Run steps in order** using the launchers below.
 
-- **Raw reads**: `reads/{population}/{sample}_R1.fastq` / `_R2.fastq`
-- **Sample list**: `scripts/full_sample_list.txt` — one entry per line as `SUBDIR/SAMPLE_NAME` (e.g., `Bar_L/Bar_L_01`)
-- **Reference**: `Sbenedicti_v2.fasta` at `/rs1/shares/brc/admin/databases/s_benedicti/`
+---
 
-## Key Outputs
+## Pipeline Steps
 
-- **GATK BAMs**: `05_BWA_MEM2/gatk_downstream/{pop}/{sample}.sorted.dedup.bam`
-- **Per-sample GVCFs**: `08_HAPLOTYPECALLER/gvcfs/{pop}/{sample}.g.vcf.gz`
-- **Combined GVCF**: `08_HAPLOTYPECALLER/all_samples.g.vcf.gz`
-- **Final VCFs**: `09_GENOTYPED/filtered/snps.pass.vcf.gz`, `indels.pass.vcf.gz`
-- **Diagnostic tables**: `09_GENOTYPED/filtered/snps.raw.table`, `indels.raw.table`
+### Setup (run once before the pipeline)
 
-## Dependencies
+| Script | Purpose |
+|--------|---------|
+| `00_index_reference.sh` | Decompress reference, create .fai and bwa-mem2 index |
 
-- **Scheduler**: LSF (`bsub`)
-- **Containers**: Apptainer (all tools run in containers)
-  - FastQC 0.12.1, Trimmomatic 0.40, MultiQC 1.23
-  - BWA-MEM2 2.2.1, Samtools 1.21
-  - Qualimap 2.3, mosdepth 0.3.8
-  - GATK 4.6.0.0
+Submit with: `bsub < 00_index_reference.sh`
+
+---
+
+### Step 03 — FastQC (pre-trim)
+```bash
+bash 03_fastqc_before_launcher.sh
+```
+
+---
+
+### Step 04 — Trimmomatic + post-trim FastQC
+```bash
+bash 04_trimmomatic_launcher.sh
+```
+
+---
+
+### Step 05 — Alignment (ANGSD mode — duplicates flagged)
+```bash
+bash 05_bwamem2_launcher.sh
+```
+
+### Step 05b — Alignment (GATK mode — duplicates removed)
+```bash
+bash 05b_bwamem2_gatk_launcher.sh
+```
+
+---
+
+### Step 07 — BAM QC (Qualimap + mosdepth)
+```bash
+bash 07_bam_qc_launcher.sh
+```
+
+Once the array finishes, aggregate results:
+```bash
+bsub < 07_bam_qc_multiqc.sh
+```
+
+---
+
+### Step 08 — HaplotypeCaller (per sample × chromosome)
+```bash
+bash 08_haplotypecaller_launcher.sh
+```
+
+Once all jobs finish, merge per-chromosome GVCFs:
+```bash
+bash 08_haplotypecaller_merge_intervals.sh
+```
+
+---
+
+### Step 09b — GenomicsDBImport (per chromosome)
+
+First, create interval lists and sample map:
+```bash
+bash 09b_setup_intervals.sh
+```
+
+Then submit:
+```bash
+bash 09b_genomicsdb_import_launcher.sh
+```
+
+---
+
+### Step 10b — Genotype GVCFs (10 Mb chunks)
+
+First, generate the chunk list from the reference:
+```bash
+bash 10b_setup_chunks.sh
+```
+
+Then run GenomicsDBImport and GenotypeGVCFs in order:
+```bash
+bash 10b_genomicsdb_chunk_launcher.sh
+# wait for completion
+bash 10b_genotype_chunk_launcher.sh
+```
+
+---
+
+### Step 11b — Gather chunks into all-sites VCF
+```bash
+bash 11b_gather_launcher.sh
+```
+
+Output: `${GENOTYPED_DIR}/all_samples.allsites.vcf.gz`
+
+---
+
+### Step 12b — Filter SNPs
+```bash
+bash 12b_filter_snps_launcher.sh
+```
+
+Outputs (in `${GENOTYPED_DIR}/filtered/`):
+- `snps.raw.vcf.gz` — unfiltered SNPs
+- `snps.filtered.vcf.gz` — hard-filtered (FILTER tag applied)
+- `snps.pass.vcf.gz` — PASS sites only
+- `snps.raw.table` — quality score table for diagnostic plots
+
+### Step 13b — Filter Indels
+```bash
+bash 13b_filter_indels_launcher.sh
+```
+
+Same output structure as 12b for indels.
+
+---
+
+## Tuning
+
+All job resources and tool parameters live in step config files. Edit these if jobs time out, run out of memory, or you want to adjust tool behavior. **Do not edit the `.sh` scripts directly.**
+
+| Config | Controls |
+|--------|---------|
+| `03_fastqc_before.config` | FastQC job resources |
+| `04_trimmomatic.config` | Trimmomatic resources, adapter/quality parameters, Java heap |
+| `05_bwamem2.config` | BWA-MEM2 resources, samtools sort threads |
+| `05b_bwamem2_gatk.config` | Same as 05 for GATK-mode alignment |
+| `07_bam_qc.config` | Qualimap/mosdepth resources and parameters |
+| `08_haplotypecaller.config` | HaplotypeCaller resources, Java heap, GC threads, pair-HMM threads |
+| `09b_genomicsdb_import.config` | GenomicsDBImport resources, reader threads, batch size |
+| `10b_chunks.config` | Chunk size, GenomicsDB/GenotypeGVCFs resources |
+| `11b_gather.config` | Gather resources, parallel chunk-fix settings |
+| `12b_filter_snps.config` | SNP filter resources and hard-filter thresholds |
+| `13b_filter_indels.config` | Indel filter resources and hard-filter thresholds |
+
+---
+
+## Repository Structure
+
+```
+scripts/
+├── global_config.sh              # ← EDIT THIS for new projects
+├── chromosome_list.txt           # 11 chromosomes in dict order (fixed for this reference)
+├── generate_sample_list.sh       # utility: build XFILE from reads directory
+│
+├── 00_index_reference.sh
+│
+├── 03_fastqc_before.config / _launcher.sh / .sh
+├── 04_trimmomatic.config / _launcher.sh / .sh
+├── 05_bwamem2.config / _launcher.sh / .sh
+├── 05b_bwamem2_gatk.config / _launcher.sh / .sh
+│
+├── 07_bam_qc.config / _launcher.sh / .sh
+├── 07_bam_qc_multiqc.sh
+│
+├── 08_haplotypecaller.config
+├── 08_haplotypecaller_launcher.sh
+├── 08_haplotypecaller_interval.sh
+├── 08_haplotypecaller_merge_intervals.sh
+├── 08_haplotypecaller_merge.sh
+│
+├── 09b_setup_intervals.sh
+├── 09b_genomicsdb_import.config / _launcher.sh / .sh
+│
+├── 10b_setup_chunks.sh
+├── 10b_chunks.config
+├── 10b_genomicsdb_chunk_launcher.sh / .sh
+├── 10b_genotype_chunk_launcher.sh / .sh
+│
+├── 11b_gather.config / _launcher.sh / .sh
+├── 12b_filter_snps.config / _launcher.sh / .sh
+├── 13b_filter_indels.config / _launcher.sh / .sh
+│
+├── deprecated/                   # old scripts, kept for reference
+└── recovery/                     # one-off scripts from the original run
+```
+
+---
 
 ## Notes
 
-- Final Count: 134 samples across 11 populations from 3 geographic locations (Atlantic, Gulf, West coast)
-- Median coverage ~3.6X after duplicate removal
-- `--include-non-variant-sites` in GenotypeGVCFs retains invariant sites for downstream diversity statistics
-- Hard filtering follows GATK best practices for non-model organisms (see below)
-
-## Hard Filtering Rationale
-
-GATK's preferred filtering method (VQSR) requires a known truth set of validated variants to train its model — something that doesn't exist for *S. benedicti*. Hard filtering is the recommended alternative: each variant is evaluated against fixed annotation thresholds and tagged PASS or filtered.
-
-SNP filters applied: QD < 2.0, FS > 60.0, MQ < 40.0, MQRankSum < -12.5, ReadPosRankSum < -8.0, SOR > 3.0. Indel filters: QD < 2.0, FS > 200.0, ReadPosRankSum < -20.0, SOR > 10.0. These are the GATK-recommended defaults for hard filtering.
-
-What the annotations measure:
-- **QD** (QualByDepth) — variant quality normalized by depth; low values suggest a weak call
-- **FS** (FisherStrand) — strand bias via Fisher's exact test; high values indicate reads supporting the variant come disproportionately from one strand
-- **MQ** (MappingQuality) — root mean square mapping quality; low values mean reads don't map confidently
-- **MQRankSum** — compares mapping quality of reads supporting ref vs alt alleles; large negative values indicate alt-supporting reads map poorly
-- **ReadPosRankSum** — compares position within reads for ref vs alt alleles; large negative values indicate alt alleles cluster at read ends (often artifacts)
-- **SOR** (StrandOddsRatio) — another strand bias measure, more robust than FS for high coverage
-
-These thresholds are GATK's generic defaults, calibrated primarily on high-coverage human data. They serve as a reasonable first-pass baseline but are not tuned to this organism or coverage depth. Diagnostic tables (`snps.raw.table`, `indels.raw.table`) contain per-site annotation values for every variant before filtering, so that distributions can be plotted and thresholds adjusted in future work if needed
-- Three high-coverage samples (Gal_L_F09, LBA_L_F01, LBA_L_F03) required interval-split HaplotypeCaller runs
+- Steps 12b and 13b both read from `all_samples.allsites.vcf.gz` and can be re-run independently — useful when tuning filter thresholds.
+- Hard-filter thresholds follow GATK best practices. Adjust in `12b_filter_snps.config` and `13b_filter_indels.config`.
+- `chromosome_list.txt` is in sequence dictionary order (lexicographic). Do not change the order — it must match the reference dictionary for `GatherVcfs`.
+- The bwa-mem2 container is stored locally under `${WORKING_DIR}/containers/`. All other containers are pulled from the shared HPC image repository (`$CONT`).
