@@ -1,7 +1,7 @@
 # *Streblospio benedicti* Low-Coverage WGS Population Genetics Pipeline
 
 GATK-based variant calling pipeline for low-coverage whole-genome sequencing data.  
-Designed for LSF (bsub) HPC environments using Apptainer containers.
+Designed for LSF (bsub) HPC environments using Apptainer containers. Container links are on the Hazel cluster under the BRC containers/images dir.
 
 ---
 
