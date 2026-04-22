@@ -21,9 +21,11 @@ FIRST_GVCF=$(head -1 "$SAMPLE_MAP" | cut -f2)
 echo "Submitting GenomicsDBImport for ${NUM_GROUPS} chromosomes"
 echo "Sample map: $(wc -l < "$SAMPLE_MAP") samples"
 
+create_dir $GENOMICSDB_LOGS_O $GENOMICSDB_LOGS_E
+
 bsub -J "${JOB09B_NAME}[1-${NUM_GROUPS}]" \
      -n $JOB09B_CPUS -W $JOB09B_TIME \
      -R "span[hosts=1] rusage[mem=${JOB09B_MEMORY}]" \
-     -o "${PIPELINE_DIR}/logs/genomicsdb_import.%J_%I.log" \
-     -e "${PIPELINE_DIR}/logs/genomicsdb_import.%J_%I.err" \
+     -o "${GENOMICSDB_LOGS_O}/genomicsdb_import.%J_%I.log" \
+     -e "${GENOMICSDB_LOGS_E}/genomicsdb_import.%J_%I.err" \
      bash "${PIPELINE_DIR}/09b_genomicsdb_import.sh"

@@ -19,9 +19,11 @@ FIRST_GVCF=$(head -1 "$SAMPLE_MAP" | cut -f2)
 
 echo "Submitting GenomicsDBImport for ${NUM_CHUNKS} chunks"
 
+create_dir $CHUNKS_LOGS_O $CHUNKS_LOGS_E
+
 bsub -J "${JOB10B_IMPORT_NAME}[1-${NUM_CHUNKS}]" \
      -n $JOB10B_IMPORT_CPUS -W $JOB10B_IMPORT_TIME \
      -R "span[hosts=1] rusage[mem=${JOB10B_IMPORT_MEMORY}]" \
-     -o "${PIPELINE_DIR}/logs/genomicsdb_chunk.%J_%I.log" \
-     -e "${PIPELINE_DIR}/logs/genomicsdb_chunk.%J_%I.err" \
+     -o "${CHUNKS_LOGS_O}/genomicsdb_chunk.%J_%I.log" \
+     -e "${CHUNKS_LOGS_E}/genomicsdb_chunk.%J_%I.err" \
      bash "${PIPELINE_DIR}/10b_genomicsdb_chunk.sh"

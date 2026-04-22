@@ -1,32 +1,45 @@
 #!/bin/bash
-# 08_haplotypecaller_launcher.sh - submit HaplotypeCaller GVCF array job
+# 08_haplotypecaller_launcher.sh - submit HaplotypeCaller per sample x chromosome
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || true
 [[ -z "$SCRIPT_DIR" || ! -f "${SCRIPT_DIR}/08_haplotypecaller.config" ]] && SCRIPT_DIR="${PIPELINE_DIR}"
 source "${SCRIPT_DIR}/08_haplotypecaller.config"
 
-[[ ! -f "${XFILE}" ]] && echo "ERROR: ${XFILE} not found" && exit 1
-[[ ! -f "${GATK_SIF}" ]] && echo "ERROR: GATK container not found: ${GATK_SIF}" && exit 1
-[[ ! -f "${REF_DIR}/Sbenedicti_v2.dict" ]] && echo "ERROR: sequence dictionary not found" && exit 1
+CHR_LIST=${SCRIPT_DIR}/chromosome_list.txt
+WORKER=${SCRIPT_DIR}/08_haplotypecaller_interval.sh
 
-NUM_SAMPLES=$(lc "${XFILE}")
+[[ ! -f "$XFILE" ]]   && echo "ERROR: ${XFILE} not found" && exit 1
+[[ ! -f "$CHR_LIST" ]] && echo "ERROR: ${CHR_LIST} not found" && exit 1
+[[ ! -f "$WORKER" ]]   && echo "ERROR: ${WORKER} not found" && exit 1
 
-# spot-check first BAM
-FIRST=$(head -1 "${XFILE}")
-FIRST_BAM="${GATK_BAM_DIR}/$(dirname "$FIRST")/$(basename "$FIRST").sorted.dedup.bam"
-[[ ! -f "${FIRST_BAM}" ]] && echo "ERROR: BAM not found: ${FIRST_BAM}" && exit 1
+NUM_SAMPLES=$(wc -l < "$XFILE")
+NUM_CHRS=$(wc -l < "$CHR_LIST")
+echo "Submitting ${NUM_SAMPLES} samples x ${NUM_CHRS} chromosomes = $((NUM_SAMPLES * NUM_CHRS)) jobs"
 
 create_dir $HC_DIR $GVCF_DIR $HC_LOGS_O $HC_LOGS_E
-while IFS= read -r entry; do
-    create_dir "${GVCF_DIR}/$(dirname "$entry")"
+
+IDX=0
+while IFS= read -r ENTRY; do
+    IDX=$((IDX + 1))
+    NAME=$(basename "$ENTRY")
+    SUBDIR=$(dirname "$ENTRY")
+
+    INTDIR=${GVCF_DIR}/${SUBDIR}/intervals_${NAME}
+    mkdir -p "$INTDIR"
+
+    echo "  [${IDX}] ${ENTRY}"
+
+    while read CHR; do
+        bsub -J "hc_${NAME}_${CHR}" \
+             -n $JOB8_INT_CPUS -W $JOB8_INT_TIME \
+             -R "span[hosts=1] rusage[mem=${JOB8_INT_MEMORY}]" \
+             -o "${HC_LOGS_O}/hc.08.int.%J_${IDX}_${CHR}.log" \
+             -e "${HC_LOGS_E}/hc.08.int.%J_${IDX}_${CHR}.err" \
+             bash -c "export HC_SAMPLE_IDX=${IDX} HC_INTERVAL=${CHR}; bash ${WORKER}"
+    done < "$CHR_LIST"
+
 done < "$XFILE"
 
-echo "Submitting ${JOB8_NAME} for ${NUM_SAMPLES} samples..."
-awk -F/ '{print $1}' "$XFILE" | sort | uniq -c
-
-bsub -J "${JOB8_NAME}[1-${NUM_SAMPLES}]%${JOB8_CONCURRENT}" \
-     -n $JOB8_CPUS -W $JOB8_TIME \
-     -R "span[hosts=1] rusage[mem=${JOB8_MEMORY}]" \
-     -o "${HC_LOGS_O}/hc.08.%J_%I.log" \
-     -e "${HC_LOGS_E}/hc.08.%J_%I.err" \
-     bash "${SCRIPT_DIR}/08_haplotypecaller.sh"
+echo ""
+echo "Submitted $((IDX * NUM_CHRS)) jobs. LSF handles scheduling."
+echo "After all complete, run: bash 08_haplotypecaller_merge_intervals.sh"

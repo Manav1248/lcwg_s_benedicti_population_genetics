@@ -38,7 +38,7 @@ module load apptainer
 apptainer exec \
     --bind ${OUTDIR}:${OUTDIR},${INTDIR}:${INTDIR} \
     $GATK_SIF \
-    gatk --java-options "-Xmx6G" \
+    gatk --java-options "${JOB8_MERGE_JAVA_HEAP}" \
         GatherVcfs \
         $INPUT_ARGS \
         -O ${OUTDIR}/${NAME}.g.vcf.gz

@@ -29,13 +29,13 @@ module load apptainer
 apptainer exec \
     --bind ${GATK_BAM_DIR}:${GATK_BAM_DIR},${REF_DIR}:${REF_DIR},${INTDIR}:${INTDIR},${TMPDIR}:${TMPDIR} \
     $GATK_SIF \
-    gatk --java-options "-Xmx10G -XX:ParallelGCThreads=2 -Djava.io.tmpdir=${TMPDIR}" \
+    gatk --java-options "${JOB8_INT_JAVA_HEAP} -XX:ParallelGCThreads=${JOB8_INT_GC_THREADS} -Djava.io.tmpdir=${TMPDIR}" \
         HaplotypeCaller \
         -R $REFERENCE \
         -I $INPUT_BAM \
         -O $OUTPUT_GVCF \
         -ERC GVCF \
-        --native-pair-hmm-threads 4 \
+        --native-pair-hmm-threads ${JOB8_INT_PAIR_HMM_THREADS} \
         -L ${HC_INTERVAL}
 
 [[ $? -ne 0 ]] && echo "Error: HaplotypeCaller failed" && rm -rf "$TMPDIR" && exit 1

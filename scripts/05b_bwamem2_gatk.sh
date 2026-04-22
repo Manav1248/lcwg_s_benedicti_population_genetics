@@ -31,7 +31,7 @@ RG="@RG\\tID:${NAME}\\tSM:${NAME}\\tLB:${NAME}\\tPL:ILLUMINA\\tPU:${PU}"
 
 module load apptainer
 
-BWA_THREADS=$((JOB5B_CPUS - 2))
+BWA_THREADS=$((JOB5B_CPUS - 2))  # reserve 2 threads for samtools in the pipe
 
 # align -> fixmate -> sort -> markdup -r (remove dups)
 apptainer exec \
@@ -41,7 +41,7 @@ apptainer exec \
 | apptainer exec --bind ${OUTDIR}:${OUTDIR},${TMPDIR}:${TMPDIR} $SAMTOOLS_SIF \
     samtools fixmate -m -u - - \
 | apptainer exec --bind ${OUTDIR}:${OUTDIR},${TMPDIR}:${TMPDIR} $SAMTOOLS_SIF \
-    samtools sort -@ 2 -T "${TMPDIR}/${NAME}" -u - \
+    samtools sort -@ ${BWA_SORT_THREADS} -T "${TMPDIR}/${NAME}" -u - \
 | apptainer exec --bind ${OUTDIR}:${OUTDIR},${TMPDIR}:${TMPDIR} $SAMTOOLS_SIF \
     samtools markdup -r -S -T "${TMPDIR}/${NAME}_markdup" - "${OUTDIR}/${NAME}.sorted.dedup.bam"
 

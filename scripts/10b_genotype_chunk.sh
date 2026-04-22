@@ -32,7 +32,7 @@ module load apptainer
 apptainer exec \
     --bind ${WORKING_DIR}:${WORKING_DIR},${REF_DIR}:${REF_DIR},${TMPDIR}:${TMPDIR} \
     $GATK_SIF \
-    gatk --java-options "${JOB10B_GENO_HEAP} -XX:ParallelGCThreads=1 -Djava.io.tmpdir=${TMPDIR}" \
+    gatk --java-options "${JOB10B_GENO_HEAP} -XX:ParallelGCThreads=${JOB10B_GENO_GC_THREADS} -Djava.io.tmpdir=${TMPDIR}" \
         GenotypeGVCFs \
         -R $REFERENCE \
         -V gendb://${WORKSPACE} \

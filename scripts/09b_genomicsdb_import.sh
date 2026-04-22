@@ -36,13 +36,13 @@ module load apptainer
 apptainer exec \
     --bind ${WORKING_DIR}:${WORKING_DIR},${REF_DIR}:${REF_DIR},${TMPDIR}:${TMPDIR} \
     $GATK_SIF \
-    gatk --java-options "${JOB09B_HEAP} -XX:ParallelGCThreads=2 -Djava.io.tmpdir=${TMPDIR}" \
+    gatk --java-options "${JOB09B_HEAP} -XX:ParallelGCThreads=${JOB09B_GC_THREADS} -Djava.io.tmpdir=${TMPDIR}" \
         GenomicsDBImport \
         --sample-name-map $SAMPLE_MAP \
         --genomicsdb-workspace-path $WORKSPACE \
         -L $INTERVAL_LIST \
-        --reader-threads 5 \
-        --batch-size 50 \
+        --reader-threads ${JOB09B_READER_THREADS} \
+        --batch-size ${JOB09B_BATCH_SIZE} \
         --merge-input-intervals
 
 [[ $? -ne 0 ]] && echo "Error: GenomicsDBImport failed for ${GROUP}" && rm -rf "$TMPDIR" && exit 1

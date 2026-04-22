@@ -12,10 +12,8 @@ set -euo pipefail
 pwd; hostname; date
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || true
-[[ -z "$SCRIPT_DIR" || ! -f "${SCRIPT_DIR}/global_config.sh" ]] && SCRIPT_DIR="${PIPELINE_DIR}"
-source "${SCRIPT_DIR}/global_config.sh"
-
-BCFTOOLS_SIF=${CONT}/staphb_bcftools:1.17.sif
+[[ -z "$SCRIPT_DIR" || ! -f "${SCRIPT_DIR}/11b_gather_filter.config" ]] && SCRIPT_DIR="${PIPELINE_DIR}"
+source "${SCRIPT_DIR}/11b_gather_filter.config"
 CHUNK_DIR=${GENOTYPED_DIR}/by_chunk
 FIXED_DIR=${GENOTYPED_DIR}/by_chunk_fixed
 ALLSITES_VCF=${GENOTYPED_DIR}/all_samples.allsites.vcf.gz
@@ -31,11 +29,11 @@ NCHUNKS=$(ls ${CHUNK_DIR}/chunk_*.vcf.gz 2>/dev/null | wc -l)
 
 # rewrite chunks in parallel (4 at a time) to fix BGZF blocks
 echo "Fixing ${NCHUNKS} chunk VCFs (4 parallel)..."
-MAX_PARALLEL=4
+MAX_PARALLEL=${BCFTOOLS_MAX_PARALLEL}
 for f in $(ls ${CHUNK_DIR}/chunk_*.vcf.gz | sort); do
     BASE=$(basename "$f")
     (
-        $BCF bcftools view $f --threads 2 -O z -o ${FIXED_DIR}/${BASE} 2>/dev/null
+        $BCF bcftools view $f --threads ${BCFTOOLS_FIX_THREADS} -O z -o ${FIXED_DIR}/${BASE} 2>/dev/null
         $BCF bcftools index ${FIXED_DIR}/${BASE}
         echo "  Fixed ${BASE}"
     ) &
@@ -66,13 +64,13 @@ echo "All-sites VCF: $(du -h "$ALLSITES_VCF" | cut -f1)"
 
 # SNPs: select -> filter -> extract PASS
 echo "Selecting SNPs..."
-$BCF bcftools view -v snps $ALLSITES_VCF --threads 4 \
+$BCF bcftools view -v snps $ALLSITES_VCF --threads ${BCFTOOLS_VIEW_THREADS} \
     -O z -o ${OUTDIR}/snps.raw.vcf.gz
 $BCF bcftools index ${OUTDIR}/snps.raw.vcf.gz
 
 echo "Filtering SNPs..."
 $BCF bcftools filter ${OUTDIR}/snps.raw.vcf.gz \
-    -e 'QD<2.0 || FS>60.0 || MQ<40.0 || MQRankSum<-12.5 || ReadPosRankSum<-8.0 || SOR>3.0' \
+    -e "${SNP_FILTER}" \
     -s "hardfilter" \
     -O z -o ${OUTDIR}/snps.filtered.vcf.gz
 $BCF bcftools index ${OUTDIR}/snps.filtered.vcf.gz
@@ -84,13 +82,13 @@ $BCF bcftools index ${OUTDIR}/snps.pass.vcf.gz
 
 # indels: select -> filter -> extract PASS
 echo "Selecting indels..."
-$BCF bcftools view -v indels $ALLSITES_VCF --threads 4 \
+$BCF bcftools view -v indels $ALLSITES_VCF --threads ${BCFTOOLS_VIEW_THREADS} \
     -O z -o ${OUTDIR}/indels.raw.vcf.gz
 $BCF bcftools index ${OUTDIR}/indels.raw.vcf.gz
 
 echo "Filtering indels..."
 $BCF bcftools filter ${OUTDIR}/indels.raw.vcf.gz \
-    -e 'QD<2.0 || FS>200.0 || ReadPosRankSum<-20.0 || SOR>10.0' \
+    -e "${INDEL_FILTER}" \
     -s "hardfilter" \
     -O z -o ${OUTDIR}/indels.filtered.vcf.gz
 $BCF bcftools index ${OUTDIR}/indels.filtered.vcf.gz

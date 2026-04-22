@@ -12,27 +12,17 @@ INT_DIR=${HC_DIR}/intervals
 mkdir -p "$INT_DIR"
 
 FAI=${REFERENCE}.fai
+CHR_LIST=${SCRIPT_DIR}/chromosome_list.txt
 [[ ! -f "$FAI" ]] && echo "Error: reference index not found: $FAI" && exit 1
+[[ ! -f "$CHR_LIST" ]] && echo "Error: chromosome_list.txt not found: $CHR_LIST" && exit 1
 
 # one .list file per chromosome
-for CHR in Ch_1 Ch_2 Ch_3 Ch_4 Ch_5 Ch_6 Ch_7 Ch_8 Ch_9 Ch_10 Ch_11; do
+while IFS= read -r CHR; do
     echo "$CHR" > "${INT_DIR}/${CHR}.list"
-done
+done < "$CHR_LIST"
 
 # master list for array indexing (line number = LSB_JOBINDEX)
-cat > "${INT_DIR}/interval_groups.txt" <<EOF
-Ch_1
-Ch_2
-Ch_3
-Ch_4
-Ch_5
-Ch_6
-Ch_7
-Ch_8
-Ch_9
-Ch_10
-Ch_11
-EOF
+cp "$CHR_LIST" "${INT_DIR}/interval_groups.txt"
 
 # sample map for GenomicsDBImport (sample_name <tab> gvcf_path)
 SAMPLE_MAP=${INT_DIR}/sample_map.txt

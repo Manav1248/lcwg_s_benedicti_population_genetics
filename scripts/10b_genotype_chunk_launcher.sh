@@ -23,11 +23,11 @@ done
 
 echo "Submitting GenotypeGVCFs for ${NUM_CHUNKS} chunks"
 
-create_dir "${GENOTYPED_DIR}/by_chunk"
+create_dir "${GENOTYPED_DIR}/by_chunk" $CHUNKS_LOGS_O $CHUNKS_LOGS_E
 
 bsub -J "${JOB10B_GENO_NAME}[1-${NUM_CHUNKS}]" \
      -n $JOB10B_GENO_CPUS -W $JOB10B_GENO_TIME \
      -R "span[hosts=1] rusage[mem=${JOB10B_GENO_MEMORY}]" \
-     -o "${PIPELINE_DIR}/logs/genotype_chunk.%J_%I.log" \
-     -e "${PIPELINE_DIR}/logs/genotype_chunk.%J_%I.err" \
+     -o "${CHUNKS_LOGS_O}/genotype_chunk.%J_%I.log" \
+     -e "${CHUNKS_LOGS_E}/genotype_chunk.%J_%I.err" \
      bash "${PIPELINE_DIR}/10b_genotype_chunk.sh"

@@ -31,9 +31,9 @@ ADAPTER_DIR=$(dirname $ADAPTERS)
 module load apptainer
 apptainer exec \
     --bind ${READS_BASE}:${READS_BASE},${TRIM_DIR}:${TRIM_DIR},${ADAPTER_DIR}:${ADAPTER_DIR} \
-    --env _JAVA_OPTIONS="-Xmx6G" \
+    --env _JAVA_OPTIONS="${JOB4_JAVA_HEAP}" \
     $TRIMMOMATIC_SIF \
-    trimmomatic PE -phred33 -threads $JOB4_CPUS \
+    trimmomatic PE -${JOB4_PHRED} -threads $JOB4_CPUS \
     $READ1 $READ2 \
     ${TRIM_OUT}/${NAME}_R1_paired.fastq.gz ${UNPAIR_OUT}/${NAME}_R1_unpaired.fastq.gz \
     ${TRIM_OUT}/${NAME}_R2_paired.fastq.gz ${UNPAIR_OUT}/${NAME}_R2_unpaired.fastq.gz \
