@@ -22,7 +22,7 @@ export QUALIMAP_SIF=${CONT}/qualimap_2_3.sif
 export MOSDEPTH_SIF=${CONT}/mosdepth_0_3_8.sif
 export GATK_SIF=${CONT}/broadinstitute_gatk:4.6.0.0.sif
 export SAMTOOLS_SIF=${CONT}/staphb_samtools:1.21.sif
-export BWAMEM2_SIF=${WORKING_DIR}/containers/bwa-mem2:2.2.1--hd03093a_5
+export BWAMEM2_SIF=${CONT}/bwa-mem2:2.2.1--hd03093a_5
 export BCFTOOLS_SIF=${CONT}/staphb_bcftools:1.17.sif
 
 # Databases
