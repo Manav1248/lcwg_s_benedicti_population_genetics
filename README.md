@@ -213,7 +213,7 @@ scripts/
 
 ## Notes
 
-- Steps 12b and 13b both read from `all_samples.allsites.vcf.gz` and can be re-run independently — useful when tuning filter thresholds.
+- Steps 12b and 13b both read from `all_samples.allsites.vcf.gz` and can be re-run independently... useful when tuning filter thresholds.
 - Hard-filter thresholds follow GATK best practices. Adjust in `12b_filter_snps.config` and `13b_filter_indels.config`.
 - `chromosome_list.txt` is in sequence dictionary order (lexicographic). Do not change the order — it must match the reference dictionary for `GatherVcfs`.
 - The bwa-mem2 container is stored locally under `${WORKING_DIR}/containers/`. All other containers are pulled from the shared HPC image repository (`$CONT`).
