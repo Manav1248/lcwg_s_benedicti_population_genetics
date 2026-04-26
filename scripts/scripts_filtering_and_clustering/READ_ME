@@ -1,1 +1,3 @@
+Filtering and clustering-related scripts are kept here. 
+All scripts are configured for use with the North Carolina State University Bioinformatics Research Center Cluster, which makes use of the SLURM job scheduler.
 
