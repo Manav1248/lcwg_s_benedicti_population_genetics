@@ -1,1 +1,10 @@
+All scripts here require plink v1.9, which is available on the BRC.
 
+Step 1 script: generation of initial PLINK binary fileset (input is the VCF output by step 6 the filtration method located in ../filtering_scripts): snps.pass.lowqualfiltered_passed_lowdepthfiltered_passed.vcf.gz
+
+Step 2 script: perform LD-pruning of the data (does not remove sites, simply marks which sites passed or didn't)
+
+Step 3 script: generation of a new PLINK binary fileset using, as input, the step 1 output PLINK binary fileset and the step 2 output prune.in file (actually removes sites that did not pass LD-pruning)
+
+Step 4 script: performs the PCA
+  The primary outputs of this are 1) an EIGENVEC file (this is what is used to generate the PCA plot) and 2) an EIGENVAL file (needed to get percentage of variance information)
