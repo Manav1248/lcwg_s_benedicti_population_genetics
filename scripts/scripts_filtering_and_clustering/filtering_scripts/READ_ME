@@ -23,3 +23,6 @@ Step 6 script: filter VCF output by step 5 for passed sites
 
 Step 7 script: get quality metrics table for VCF output by step 6
         download table, use R script to get density plots: PlotVCFQualityScores_SNPVCF_Filtered_Final.R (requires tidyverse)
+
+The R scripts are used for plotting before filtration, after low quality site filtration, and after low depth site filtration.
+The output of these R scripts are images of the plots generated. These are located in the plots subdirectory
