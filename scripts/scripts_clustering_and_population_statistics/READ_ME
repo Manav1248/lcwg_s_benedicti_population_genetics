@@ -1,1 +1,3 @@
-Test
+The scripts here are to be used on the final VCFs output by the scripts located in /lcwg_s_benedicti_population_genetics/scripts/
+
+The scripts here were used for generation of population statistics, and filtering and clustering. 
