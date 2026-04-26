@@ -1,0 +1,28 @@
+Asides from the scripts that obtain passed sites following filtration (the step3 and step6 scripts), all other scripts require the reference FASTA as input
+
+Step 1 script: get quality metrics table for the original VCF
+        download table, use R script to get density plots: PlotVCFQualityScores_SNPVCF_Unfiltered.R (requires tidyverse)
+        NOTE: the output table is approximately 2GB. When I attempted to run the R script on the BRC, it took approximately four hours
+        NOTE: downloading the table then running it on my PC took approximately 10 minutes
+
+Step 2 script: filter VCF for low quality sites
+        NOTE: this script does not remove sites, but marks those sites which do not pass filtration
+
+Step 3 script: filter step 2 output VCF for passed sites
+        NOTE: this script filters/removes sites from the VCF output by step 2
+
+Step 4 script: get quality metrics table for the VCF output by step 3
+        download table, use R script to get density plots: PlotVCFQualityScores_Filtered.R (requires tidyverse)
+        NOTE: the output table is approximately 850Mb. When I attempted to run the R script on the BRC, it took approximately 30 minutes
+        NOTE: downloading the table then running it on my PC took approximately 5 minutes
+
+Step 5 script: filter VCF output by step 3 for low depth sites
+        NOTE: like the step 2 script, this only marks those sites which do not pass filtration
+Step 6 script: filter VCF output by step 5 for passed sites
+        NOTE: like the step 3 script, this filters sites from the VCF output by step 5
+
+Step 7 script: get quality metrics table for VCF output by step 6
+        download table, use R script to get density plots: PlotVCFQualityScores_SNPVCF_Filtered_Final.R (requires tidyverse)
+
+The R scripts are used for plotting before filtration, after low quality site filtration, and after low depth site filtration.
+The output of these R scripts are images of the plots generated. These are located in the plots subdirectory
